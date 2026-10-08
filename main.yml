@@ -1,0 +1,1340 @@
+name: Build VR Tetris
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg python3
+
+      - name: Create directories
+        run: |
+          rm -rf dist
+          mkdir -p dist
+
+      - name: Create index.html
+        run: |
+          cat > dist/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta
+              name="viewport"
+              content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"
+            >
+            <meta name="theme-color" content="#050505">
+            <title>VR Tetris Arcade</title>
+            <link rel="stylesheet" href="style.css">
+          </head>
+
+          <body>
+            <div id="loading">
+              <div>VR TETRIS</div>
+              <small>INITIALIZING...</small>
+            </div>
+
+            <div id="hud">
+              <div class="title">VR TETRIS</div>
+              <div>SCORE <span id="score">0</span></div>
+              <div>LINES <span id="lines">0</span></div>
+              <div>LEVEL <span id="level">1</span></div>
+              <div id="state"></div>
+            </div>
+
+            <div id="mobileControls">
+              <button data-action="left">◀</button>
+              <button data-action="right">▶</button>
+              <button data-action="rotate">⟳</button>
+              <button data-action="down">▼</button>
+              <button data-action="pause">Ⅱ</button>
+              <button data-action="restart">↻</button>
+            </div>
+
+            <audio id="music" src="TETRIS.OGG" loop preload="auto"></audio>
+
+            <script type="module" src="game.js"></script>
+          </body>
+          </html>
+          EOF
+
+      - name: Create style.css
+        run: |
+          cat > dist/style.css <<'EOF'
+          * {
+            box-sizing: border-box;
+          }
+
+          html,
+          body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #020305;
+            color: #fff;
+            font-family: monospace;
+          }
+
+          canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+          }
+
+          #loading {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #020305;
+            color: #00ffff;
+            font-size: 32px;
+            letter-spacing: 5px;
+            transition: opacity .5s;
+            pointer-events: none;
+          }
+
+          #loading small {
+            margin-top: 15px;
+            font-size: 12px;
+            letter-spacing: 3px;
+          }
+
+          #hud {
+            position: fixed;
+            left: 15px;
+            top: 15px;
+            z-index: 10;
+            line-height: 1.7;
+            font-size: 14px;
+            color: #00ffff;
+            text-shadow: 0 0 8px #00ffff;
+            pointer-events: none;
+          }
+
+          #hud .title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 5px;
+          }
+
+          #state {
+            color: #fff;
+            margin-top: 5px;
+          }
+
+          #mobileControls {
+            position: fixed;
+            left: 50%;
+            bottom: 18px;
+            transform: translateX(-50%);
+            z-index: 20;
+            display: grid;
+            grid-template-columns: repeat(3, 60px);
+            gap: 8px;
+          }
+
+          #mobileControls button {
+            width: 60px;
+            height: 50px;
+            border: 2px solid #00ffff;
+            border-radius: 8px;
+            background: rgba(0, 20, 25, .85);
+            color: #00ffff;
+            font: bold 20px monospace;
+            box-shadow: 0 0 10px rgba(0,255,255,.3);
+          }
+
+          #mobileControls button:active {
+            transform: scale(.9);
+            background: #00ffff;
+            color: #000;
+          }
+
+          @media (min-width: 800px) {
+            #mobileControls {
+              opacity: .45;
+            }
+          }
+          EOF
+
+      - name: Create game.js
+        run: |
+          cat > dist/game.js <<'EOF'
+          import * as THREE from
+            "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
+
+          import { VRButton } from
+            "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/webxr/VRButton.js";
+
+          // ============================================================
+          // THREE.JS
+          // ============================================================
+
+          const scene = new THREE.Scene();
+          scene.background = new THREE.Color(0x020305);
+
+          const camera = new THREE.PerspectiveCamera(
+            70,
+            innerWidth / innerHeight,
+            0.01,
+            100
+          );
+
+          camera.position.set(0, 1.6, 3);
+
+          const renderer = new THREE.WebGLRenderer({
+            antialias: true
+          });
+
+          renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+          renderer.setSize(innerWidth, innerHeight);
+          renderer.xr.enabled = true;
+          renderer.shadowMap.enabled = true;
+
+          document.body.appendChild(renderer.domElement);
+
+          const vrButton = VRButton.createButton(renderer);
+          vrButton.style.position = "fixed";
+          vrButton.style.left = "50%";
+          vrButton.style.right = "auto";
+          vrButton.style.transform = "translateX(-50%)";
+          vrButton.style.bottom = "90px";
+          vrButton.style.top = "auto";
+
+          document.body.appendChild(vrButton);
+
+          scene.add(new THREE.HemisphereLight(
+            0x99ffff,
+            0x111122,
+            2
+          ));
+
+          const mainLight = new THREE.PointLight(
+            0xffffff,
+            5,
+            10
+          );
+
+          mainLight.position.set(0, 3, 2);
+          mainLight.castShadow = true;
+          scene.add(mainLight);
+
+          // ============================================================
+          // MATERIALS
+          // ============================================================
+
+          const cabinetMat = new THREE.MeshStandardMaterial({
+            color: 0x15191d,
+            metalness: .5,
+            roughness: .35
+          });
+
+          const blackMat = new THREE.MeshStandardMaterial({
+            color: 0x030405,
+            metalness: .2,
+            roughness: .5
+          });
+
+          const cyanMat = new THREE.MeshStandardMaterial({
+            color: 0x00aaaa,
+            emissive: 0x003333,
+            metalness: .2,
+            roughness: .3
+          });
+
+          // ============================================================
+          // ARCADE
+          // ============================================================
+
+          const arcade = new THREE.Group();
+          arcade.position.set(0, 0, 0);
+
+          const cabinet = new THREE.Mesh(
+            new THREE.BoxGeometry(1.8, 3.3, .85),
+            cabinetMat
+          );
+
+          cabinet.position.y = 1.65;
+          cabinet.castShadow = true;
+          cabinet.receiveShadow = true;
+          arcade.add(cabinet);
+
+          // Screen recess
+
+          const screenFrame = new THREE.Mesh(
+            new THREE.BoxGeometry(1.48, 1.78, .12),
+            blackMat
+          );
+
+          screenFrame.position.set(0, 2.22, -.47);
+          arcade.add(screenFrame);
+
+          // ============================================================
+          // TETRIS BOARD
+          // ============================================================
+
+          const boardGroup = new THREE.Group();
+
+          const CELL = .105;
+          const WIDTH = 10;
+          const HEIGHT = 20;
+
+          boardGroup.position.set(
+            0,
+            2.22,
+            -.545
+          );
+
+          arcade.add(boardGroup);
+
+          const cells = [];
+
+          for (let y = 0; y < HEIGHT; y++) {
+            cells[y] = [];
+
+            for (let x = 0; x < WIDTH; x++) {
+
+              const material = new THREE.MeshStandardMaterial({
+                color: 0x081014,
+                emissive: 0x000000
+              });
+
+              const cube = new THREE.Mesh(
+                new THREE.BoxGeometry(
+                  CELL * .9,
+                  CELL * .9,
+                  .045
+                ),
+                material
+              );
+
+              cube.position.set(
+                (x - 4.5) * CELL,
+                (y - 9.5) * CELL,
+                0
+              );
+
+              boardGroup.add(cube);
+              cells[y][x] = cube;
+            }
+          }
+
+          // ============================================================
+          // TETROMINO DATA
+          // ============================================================
+
+          const SHAPES = [
+            {
+              color: 0x00ffff,
+              shape: [
+                [1, 1, 1, 1]
+              ]
+            },
+            {
+              color: 0xffff00,
+              shape: [
+                [1, 1],
+                [1, 1]
+              ]
+            },
+            {
+              color: 0xaa00ff,
+              shape: [
+                [0, 1, 0],
+                [1, 1, 1]
+              ]
+            },
+            {
+              color: 0x00ff55,
+              shape: [
+                [0, 1, 1],
+                [1, 1, 0]
+              ]
+            },
+            {
+              color: 0xff3333,
+              shape: [
+                [1, 1, 0],
+                [0, 1, 1]
+              ]
+            },
+            {
+              color: 0x3366ff,
+              shape: [
+                [1, 0, 0],
+                [1, 1, 1]
+              ]
+            },
+            {
+              color: 0xff8800,
+              shape: [
+                [0, 0, 1],
+                [1, 1, 1]
+              ]
+            }
+          ];
+
+          const grid = Array.from(
+            { length: HEIGHT },
+            () => Array(WIDTH).fill(null)
+          );
+
+          let current = null;
+          let fallTimer = 0;
+          let lastTime = performance.now();
+
+          let score = 0;
+          let lines = 0;
+          let level = 1;
+          let paused = false;
+          let gameOver = false;
+
+          // ============================================================
+          // PIECE
+          // ============================================================
+
+          function cloneShape(shape) {
+            return shape.map(row => [...row]);
+          }
+
+          function spawnPiece() {
+
+            const data =
+              SHAPES[Math.floor(Math.random() * SHAPES.length)];
+
+            current = {
+              shape: cloneShape(data.shape),
+              color: data.color,
+              x: Math.floor(
+                (WIDTH - data.shape[0].length) / 2
+              ),
+              y: HEIGHT - data.shape.length
+            };
+
+            if (!valid(current.shape, current.x, current.y)) {
+              gameOver = true;
+              paused = false;
+              updateState();
+            }
+          }
+
+          function valid(shape, px, py) {
+
+            for (let y = 0; y < shape.length; y++) {
+              for (let x = 0; x < shape[y].length; x++) {
+
+                if (!shape[y][x])
+                  continue;
+
+                const gx = px + x;
+                const gy = py + y;
+
+                if (gx < 0 || gx >= WIDTH || gy < 0)
+                  return false;
+
+                if (grid[gy][gx])
+                  return false;
+              }
+            }
+
+            return true;
+          }
+
+          function move(dx, dy) {
+
+            if (paused || gameOver || !current)
+              return false;
+
+            const nx = current.x + dx;
+            const ny = current.y + dy;
+
+            if (valid(current.shape, nx, ny)) {
+              current.x = nx;
+              current.y = ny;
+              return true;
+            }
+
+            return false;
+          }
+
+          function rotate() {
+
+            if (paused || gameOver || !current)
+              return;
+
+            const old = current.shape;
+
+            const rotated =
+              old[0].map((_, i) =>
+                old.map(row => row[i]).reverse()
+              );
+
+            if (valid(rotated, current.x, current.y)) {
+              current.shape = rotated;
+              return;
+            }
+
+            // Small wall-kick attempt.
+            if (valid(rotated, current.x - 1, current.y)) {
+              current.x--;
+              current.shape = rotated;
+              return;
+            }
+
+            if (valid(rotated, current.x + 1, current.y)) {
+              current.x++;
+              current.shape = rotated;
+            }
+          }
+
+          function lockPiece() {
+
+            for (let y = 0; y < current.shape.length; y++) {
+              for (let x = 0; x < current.shape[y].length; x++) {
+
+                if (current.shape[y][x]) {
+                  grid[current.y + y][current.x + x] =
+                    current.color;
+                }
+              }
+            }
+
+            clearLines();
+            spawnPiece();
+          }
+
+          function hardDrop() {
+
+            if (paused || gameOver)
+              return;
+
+            while (move(0, -1)) {}
+
+            lockPiece();
+            renderBoard();
+          }
+
+          function clearLines() {
+
+            let cleared = 0;
+
+            for (let y = 0; y < HEIGHT; y++) {
+
+              if (grid[y].every(Boolean)) {
+
+                grid.splice(y, 1);
+                grid.push(Array(WIDTH).fill(null));
+
+                cleared++;
+                y--;
+              }
+            }
+
+            if (!cleared)
+              return;
+
+            lines += cleared;
+
+            const points = [
+              0,
+              100,
+              300,
+              500,
+              800
+            ];
+
+            score += points[cleared] * level;
+
+            level =
+              Math.floor(lines / 10) + 1;
+
+            updateHUD();
+          }
+
+          // ============================================================
+          // RENDER TETRIS
+          // ============================================================
+
+          function renderBoard() {
+
+            for (let y = 0; y < HEIGHT; y++) {
+              for (let x = 0; x < WIDTH; x++) {
+
+                const cell = cells[y][x];
+
+                if (grid[y][x]) {
+
+                  cell.material.color.setHex(
+                    grid[y][x]
+                  );
+
+                  cell.material.emissive.setHex(
+                    grid[y][x]
+                  );
+
+                  cell.material.emissiveIntensity = .25;
+
+                } else {
+
+                  cell.material.color.setHex(
+                    0x081014
+                  );
+
+                  cell.material.emissive.setHex(
+                    0x000000
+                  );
+                }
+              }
+            }
+
+            if (current) {
+
+              for (let y = 0; y < current.shape.length; y++) {
+                for (let x = 0; x < current.shape[y].length; x++) {
+
+                  if (!current.shape[y][x])
+                    continue;
+
+                  const gx = current.x + x;
+                  const gy = current.y + y;
+
+                  if (
+                    gx >= 0 &&
+                    gx < WIDTH &&
+                    gy >= 0 &&
+                    gy < HEIGHT
+                  ) {
+
+                    cells[gy][gx].material.color.setHex(
+                      current.color
+                    );
+
+                    cells[gy][gx].material.emissive.setHex(
+                      current.color
+                    );
+
+                    cells[gy][gx].material.emissiveIntensity = .3;
+                  }
+                }
+              }
+            }
+          }
+
+          // ============================================================
+          // HUD
+          // ============================================================
+
+          function updateHUD() {
+
+            document.getElementById("score").textContent =
+              score;
+
+            document.getElementById("lines").textContent =
+              lines;
+
+            document.getElementById("level").textContent =
+              level;
+          }
+
+          function updateState() {
+
+            const state =
+              document.getElementById("state");
+
+            if (gameOver)
+              state.textContent = "GAME OVER — RESTART";
+
+            else if (paused)
+              state.textContent = "PAUSED";
+
+            else
+              state.textContent = "";
+          }
+
+          function restart() {
+
+            for (let y = 0; y < HEIGHT; y++)
+              grid[y].fill(null);
+
+            score = 0;
+            lines = 0;
+            level = 1;
+
+            paused = false;
+            gameOver = false;
+
+            spawnPiece();
+            updateHUD();
+            updateState();
+            renderBoard();
+            startMusic();
+          }
+
+          function togglePause() {
+
+            if (gameOver)
+              return;
+
+            paused = !paused;
+            updateState();
+          }
+
+          // ============================================================
+          // AUDIO
+          // ============================================================
+
+          const music =
+            document.getElementById("music");
+
+          music.volume = .55;
+
+          function startMusic() {
+
+            music.play().catch(() => {});
+          }
+
+          // ============================================================
+          // ARCADE BUTTONS
+          // ============================================================
+
+          const buttonMeshes = [];
+
+          function createArcadeButton(
+            name,
+            label,
+            x,
+            y,
+            z
+          ) {
+
+            const group = new THREE.Group();
+
+            const base = new THREE.Mesh(
+              new THREE.BoxGeometry(.34, .20, .20),
+              blackMat
+            );
+
+            const button = new THREE.Mesh(
+              new THREE.CylinderGeometry(
+                .075,
+                .075,
+                .07,
+                24
+              ),
+              cyanMat
+            );
+
+            button.rotation.x =
+              Math.PI / 2;
+
+            button.position.z = -.13;
+
+            group.add(base);
+            group.add(button);
+
+            group.position.set(x, y, z);
+
+            group.userData.action = name;
+
+            arcade.add(group);
+            buttonMeshes.push(group);
+
+            // Floating label
+
+            const canvas =
+              document.createElement("canvas");
+
+            canvas.width = 256;
+            canvas.height = 64;
+
+            const ctx = canvas.getContext("2d");
+
+            ctx.fillStyle = "#00ffff";
+            ctx.font = "bold 28px monospace";
+            ctx.textAlign = "center";
+            ctx.fillText(label, 128, 40);
+
+            const texture =
+              new THREE.CanvasTexture(canvas);
+
+            const labelMesh = new THREE.Mesh(
+              new THREE.PlaneGeometry(.32, .08),
+              new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true
+              })
+            );
+
+            labelMesh.position.set(
+              x,
+              y + .17,
+              z - .01
+            );
+
+            arcade.add(labelMesh);
+
+            return group;
+          }
+
+          createArcadeButton(
+            "left", "LEFT",
+            -.63, .75, -.53
+          );
+
+          createArcadeButton(
+            "right", "RIGHT",
+            -.21, .75, -.53
+          );
+
+          createArcadeButton(
+            "pause", "PAUSE",
+            .21, .75, -.53
+          );
+
+          createArcadeButton(
+            "restart", "RESTART",
+            .63, .75, -.53
+          );
+
+          createArcadeButton(
+            "rotate", "ROTATE",
+            -.38, .44, -.53
+          );
+
+          createArcadeButton(
+            "down", "DOWN",
+            .38, .44, -.53
+          );
+
+          // ============================================================
+          // INTERACTION
+          // ============================================================
+
+          function performAction(action) {
+
+            startMusic();
+
+            switch (action) {
+
+              case "left":
+                move(-1, 0);
+                break;
+
+              case "right":
+                move(1, 0);
+                break;
+
+              case "down":
+
+                if (!move(0, -1))
+                  lockPiece();
+
+                break;
+
+              case "rotate":
+                rotate();
+                break;
+
+              case "pause":
+                togglePause();
+                break;
+
+              case "restart":
+                restart();
+                break;
+            }
+
+            renderBoard();
+          }
+
+          // Desktop mouse/touch ray interaction.
+
+          const raycaster =
+            new THREE.Raycaster();
+
+          const pointer =
+            new THREE.Vector2();
+
+          function pointerAction(x, y) {
+
+            pointer.x =
+              (x / innerWidth) * 2 - 1;
+
+            pointer.y =
+              -(y / innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(
+              pointer,
+              camera
+            );
+
+            const hits =
+              raycaster.intersectObjects(
+                buttonMeshes,
+                true
+              );
+
+            if (!hits.length)
+              return;
+
+            let object =
+              hits[0].object;
+
+            while (
+              object &&
+              !object.userData.action
+            ) {
+              object = object.parent;
+            }
+
+            if (object)
+              performAction(
+                object.userData.action
+              );
+          }
+
+          renderer.domElement.addEventListener(
+            "pointerdown",
+            event => {
+              pointerAction(
+                event.clientX,
+                event.clientY
+              );
+            }
+          );
+
+          // ============================================================
+          // VR CONTROLLERS
+          // ============================================================
+
+          const controllers = [
+            renderer.xr.getController(0),
+            renderer.xr.getController(1)
+          ];
+
+          controllers.forEach(controller => {
+
+            scene.add(controller);
+
+            const laser = new THREE.Line(
+              new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(0, 0, -3)
+              ]),
+              new THREE.LineBasicMaterial({
+                color: 0x00ffff
+              })
+            );
+
+            controller.add(laser);
+
+            controller.addEventListener(
+              "selectstart",
+              () => {
+
+                const origin =
+                  new THREE.Vector3();
+
+                const direction =
+                  new THREE.Vector3(
+                    0, 0, -1
+                  );
+
+                origin.setFromMatrixPosition(
+                  controller.matrixWorld
+                );
+
+                direction.applyQuaternion(
+                  controller.quaternion
+                );
+
+                raycaster.set(
+                  origin,
+                  direction
+                );
+
+                const hits =
+                  raycaster.intersectObjects(
+                    buttonMeshes,
+                    true
+                  );
+
+                if (!hits.length)
+                  return;
+
+                let object =
+                  hits[0].object;
+
+                while (
+                  object &&
+                  !object.userData.action
+                ) {
+                  object = object.parent;
+                }
+
+                if (object) {
+                  performAction(
+                    object.userData.action
+                  );
+                }
+              }
+            );
+          });
+
+          // ============================================================
+          // VR CROSSHAIR
+          // ============================================================
+
+          const crosshair =
+            new THREE.Group();
+
+          const crossMaterial =
+            new THREE.LineBasicMaterial({
+              color: 0x00ffff
+            });
+
+          function crossLine(a, b) {
+
+            return new THREE.Line(
+              new THREE.BufferGeometry()
+                .setFromPoints([a, b]),
+              crossMaterial
+            );
+          }
+
+          crosshair.add(
+            crossLine(
+              new THREE.Vector3(-.025, 0, 0),
+              new THREE.Vector3(.025, 0, 0)
+            )
+          );
+
+          crosshair.add(
+            crossLine(
+              new THREE.Vector3(0, -.025, 0),
+              new THREE.Vector3(0, .025, 0)
+            )
+          );
+
+          // Crosshair follows the headset direction.
+
+          scene.add(crosshair);
+
+          // ============================================================
+          // KEYBOARD
+          // ============================================================
+
+          addEventListener(
+            "keydown",
+            event => {
+
+              startMusic();
+
+              switch (event.key) {
+
+                case "ArrowLeft":
+                case "a":
+                  performAction("left");
+                  break;
+
+                case "ArrowRight":
+                case "d":
+                  performAction("right");
+                  break;
+
+                case "ArrowDown":
+                case "s":
+                  performAction("down");
+                  break;
+
+                case "ArrowUp":
+                case "w":
+                case "z":
+                  performAction("rotate");
+                  break;
+
+                case "p":
+                case "Escape":
+                  performAction("pause");
+                  break;
+
+                case "r":
+                  performAction("restart");
+                  break;
+              }
+            }
+          );
+
+          // ============================================================
+          // MOBILE BUTTONS
+          // ============================================================
+
+          document
+            .querySelectorAll("#mobileControls button")
+            .forEach(button => {
+
+              button.addEventListener(
+                "pointerdown",
+                event => {
+
+                  event.preventDefault();
+
+                  performAction(
+                    button.dataset.action
+                  );
+                }
+              );
+            });
+
+          // ============================================================
+          // GAME LOOP
+          // ============================================================
+
+          function tick(time) {
+
+            const dt =
+              Math.min(
+                (time - lastTime) / 1000,
+                .1
+              );
+
+            lastTime = time;
+
+            if (
+              !paused &&
+              !gameOver
+            ) {
+
+              const interval =
+                Math.max(
+                  .08,
+                  .8 -
+                  (level - 1) * .07
+                );
+
+              fallTimer += dt;
+
+              if (fallTimer >= interval) {
+
+                fallTimer = 0;
+
+                if (!move(0, -1))
+                  lockPiece();
+
+                renderBoard();
+              }
+            }
+
+            // Headset crosshair.
+
+            if (renderer.xr.isPresenting) {
+
+              const xrCamera =
+                renderer.xr.getCamera(camera);
+
+              const forward =
+                new THREE.Vector3(
+                  0, 0, -1
+                );
+
+              forward.applyQuaternion(
+                xrCamera.quaternion
+              );
+
+              crosshair.position.copy(
+                xrCamera.position
+              );
+
+              crosshair.position.add(
+                forward.multiplyScalar(2)
+              );
+
+              crosshair.quaternion.copy(
+                xrCamera.quaternion
+              );
+            }
+
+            renderer.render(
+              scene,
+              camera
+            );
+          }
+
+          renderer.setAnimationLoop(tick);
+
+          // ============================================================
+          // RESIZE
+          // ============================================================
+
+          addEventListener(
+            "resize",
+            () => {
+
+              camera.aspect =
+                innerWidth / innerHeight;
+
+              camera.updateProjectionMatrix();
+
+              renderer.setSize(
+                innerWidth,
+                innerHeight
+              );
+            }
+          );
+
+          // ============================================================
+          // START
+          // ============================================================
+
+          spawnPiece();
+          updateHUD();
+          renderBoard();
+
+          setTimeout(() => {
+
+            const loading =
+              document.getElementById("loading");
+
+            loading.style.opacity = "0";
+
+            setTimeout(
+              () => loading.remove(),
+              600
+            );
+
+          }, 700);
+          EOF
+
+      - name: Generate original TETRIS.OGG
+        run: |
+          python3 - <<'PY'
+          import math
+          import wave
+          import struct
+
+          rate = 44100
+
+          notes = {
+              "C4": 261.63,
+              "D4": 293.66,
+              "E4": 329.63,
+              "F4": 349.23,
+              "G4": 392.00,
+              "A4": 440.00,
+              "B4": 493.88,
+              "C5": 523.25,
+              "D5": 587.33,
+              "E5": 659.25,
+              "G5": 783.99
+          }
+
+          melody = [
+              ("E4", .18), ("G4", .18), ("C5", .30),
+              ("G4", .18), ("E4", .18), ("D4", .30),
+              ("F4", .18), ("A4", .18), ("D5", .30),
+              ("A4", .18), ("F4", .18), ("E4", .30),
+              ("C5", .18), ("B4", .18), ("G4", .30),
+              ("E4", .18), ("G4", .18), ("C5", .42)
+          ]
+
+          seconds = sum(d for _, d in melody)
+          samples = int(seconds * rate)
+
+          data = []
+
+          t = 0
+
+          for note, duration in melody:
+
+              freq = notes[note]
+              count = int(duration * rate)
+
+              for i in range(count):
+
+                  local = i / rate
+
+                  attack = min(1.0, local / .015)
+                  release = min(1.0, (duration - local) / .035)
+                  envelope = attack * release
+
+                  square = 1.0 if math.sin(
+                      2 * math.pi * freq * local
+                  ) >= 0 else -1.0
+
+                  sine = math.sin(
+                      2 * math.pi * freq * local
+                  )
+
+                  sample = (
+                      .12 * square +
+                      .18 * sine
+                  ) * envelope
+
+                  value = int(
+                      max(-1, min(1, sample)) * 32767
+                  )
+
+                  data.append(
+                      struct.pack("<h", value)
+                  )
+
+          with wave.open("/tmp/tetris.wav", "wb") as f:
+              f.setnchannels(1)
+              f.setsampwidth(2)
+              f.setframerate(rate)
+              f.writeframes(b"".join(data))
+          PY
+
+          ffmpeg \
+            -y \
+            -i /tmp/tetris.wav \
+            -c:a libvorbis \
+            -q:a 5 \
+            dist/TETRIS.OGG
+
+      - name: Create GitHub Pages marker
+        run: |
+          touch dist/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    permissions:
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
