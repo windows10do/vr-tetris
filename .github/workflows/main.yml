@@ -1,8 +1,9 @@
-name: Build VR Tetris
+name: Build and Deploy VR Tetris
 
 on:
   push:
-    branches: ["main"]
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -15,68 +16,56 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install tools
+      - name: Verify Tetris music exists
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg python3
+          if [ ! -f "TETRIS - 2026-10-08T191026.861.MP3" ]; then
+            echo "::error::TETRIS - 2026-10-08T191026.861.MP3 was not found in the repository."
+            exit 1
+          fi
 
-      - name: Create directories
-        run: |
-          rm -rf dist
-          mkdir -p dist
+          echo "Found existing Tetris music file:"
+          ls -lh "TETRIS - 2026-10-08T191026.861.MP3"
 
-      - name: Create index.html
+      - name: Generate index.html
         run: |
-          cat > dist/index.html <<'EOF'
+          cat > index.html <<'EOF'
           <!DOCTYPE html>
           <html lang="en">
           <head>
             <meta charset="UTF-8">
-            <meta
-              name="viewport"
-              content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"
-            >
-            <meta name="theme-color" content="#050505">
+            <meta name="viewport"
+                  content="width=device-width,initial-scale=1.0,viewport-fit=cover">
             <title>VR Tetris Arcade</title>
             <link rel="stylesheet" href="style.css">
           </head>
-
           <body>
-            <div id="loading">
-              <div>VR TETRIS</div>
-              <small>INITIALIZING...</small>
-            </div>
+            <div id="loading">LOADING VR TETRIS...</div>
 
             <div id="hud">
-              <div class="title">VR TETRIS</div>
-              <div>SCORE <span id="score">0</span></div>
-              <div>LINES <span id="lines">0</span></div>
-              <div>LEVEL <span id="level">1</span></div>
-              <div id="state"></div>
+              <div>SCORE: <span id="score">0</span></div>
+              <div>LINES: <span id="lines">0</span></div>
+              <div>LEVEL: <span id="level">1</span></div>
+              <div>STATE: <span id="state">READY</span></div>
             </div>
 
-            <div id="mobileControls">
-              <button data-action="left">◀</button>
-              <button data-action="right">▶</button>
-              <button data-action="rotate">⟳</button>
-              <button data-action="down">▼</button>
-              <button data-action="pause">Ⅱ</button>
-              <button data-action="restart">↻</button>
-            </div>
-
-            <audio id="music" src="TETRIS.OGG" loop preload="auto"></audio>
+            <audio
+              id="music"
+              src="TETRIS%20-%202026-10-08T191026.861.MP3"
+              loop
+              preload="auto">
+            </audio>
 
             <script type="module" src="game.js"></script>
           </body>
           </html>
           EOF
 
-      - name: Create style.css
+      - name: Generate style.css
         run: |
-          cat > dist/style.css <<'EOF'
+          cat > style.css <<'EOF'
           * {
             box-sizing: border-box;
           }
@@ -87,9 +76,9 @@ jobs:
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background: #020305;
-            color: #fff;
-            font-family: monospace;
+            background: #000;
+            font-family: Arial, sans-serif;
+            touch-action: none;
           }
 
           canvas {
@@ -103,772 +92,726 @@ jobs:
             inset: 0;
             z-index: 100;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            background: #020305;
-            color: #00ffff;
-            font-size: 32px;
-            letter-spacing: 5px;
-            transition: opacity .5s;
-            pointer-events: none;
-          }
-
-          #loading small {
-            margin-top: 15px;
-            font-size: 12px;
-            letter-spacing: 3px;
+            background: #000;
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
           }
 
           #hud {
             position: fixed;
-            left: 15px;
-            top: 15px;
+            top: 12px;
+            left: 12px;
             z-index: 10;
-            line-height: 1.7;
-            font-size: 14px;
-            color: #00ffff;
-            text-shadow: 0 0 8px #00ffff;
-            pointer-events: none;
-          }
-
-          #hud .title {
-            font-size: 20px;
-            font-weight: bold;
-            margin-bottom: 5px;
-          }
-
-          #state {
+            padding: 12px;
+            border-radius: 10px;
+            background: rgba(0, 0, 0, .65);
             color: #fff;
-            margin-top: 5px;
-          }
-
-          #mobileControls {
-            position: fixed;
-            left: 50%;
-            bottom: 18px;
-            transform: translateX(-50%);
-            z-index: 20;
-            display: grid;
-            grid-template-columns: repeat(3, 60px);
-            gap: 8px;
-          }
-
-          #mobileControls button {
-            width: 60px;
-            height: 50px;
-            border: 2px solid #00ffff;
-            border-radius: 8px;
-            background: rgba(0, 20, 25, .85);
-            color: #00ffff;
-            font: bold 20px monospace;
-            box-shadow: 0 0 10px rgba(0,255,255,.3);
-          }
-
-          #mobileControls button:active {
-            transform: scale(.9);
-            background: #00ffff;
-            color: #000;
-          }
-
-          @media (min-width: 800px) {
-            #mobileControls {
-              opacity: .45;
-            }
+            line-height: 1.7;
+            pointer-events: none;
           }
           EOF
 
-      - name: Create game.js
+      - name: Generate game.js
         run: |
-          cat > dist/game.js <<'EOF'
+          cat > game.js <<'EOF'
           import * as THREE from
             "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
 
           import { VRButton } from
             "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/webxr/VRButton.js";
 
-          // ============================================================
-          // THREE.JS
-          // ============================================================
-
           const scene = new THREE.Scene();
-          scene.background = new THREE.Color(0x020305);
+          scene.background = new THREE.Color(0x050505);
 
           const camera = new THREE.PerspectiveCamera(
-            70,
-            innerWidth / innerHeight,
+            65,
+            window.innerWidth / window.innerHeight,
             0.01,
             100
           );
 
-          camera.position.set(0, 1.6, 3);
+          camera.position.set(0, 2.5, 5.8);
 
           const renderer = new THREE.WebGLRenderer({
             antialias: true
           });
 
-          renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-          renderer.setSize(innerWidth, innerHeight);
+          renderer.setPixelRatio(
+            Math.min(window.devicePixelRatio, 2)
+          );
+
+          renderer.setSize(
+            window.innerWidth,
+            window.innerHeight
+          );
+
           renderer.xr.enabled = true;
-          renderer.shadowMap.enabled = true;
 
           document.body.appendChild(renderer.domElement);
+          document.body.appendChild(VRButton.createButton(renderer));
 
-          const vrButton = VRButton.createButton(renderer);
-          vrButton.style.position = "fixed";
-          vrButton.style.left = "50%";
-          vrButton.style.right = "auto";
-          vrButton.style.transform = "translateX(-50%)";
-          vrButton.style.bottom = "90px";
-          vrButton.style.top = "auto";
-
-          document.body.appendChild(vrButton);
-
-          scene.add(new THREE.HemisphereLight(
-            0x99ffff,
-            0x111122,
-            2
-          ));
-
-          const mainLight = new THREE.PointLight(
-            0xffffff,
-            5,
-            10
+          scene.add(
+            new THREE.HemisphereLight(
+              0xffffff,
+              0x222222,
+              2
+            )
           );
 
-          mainLight.position.set(0, 3, 2);
-          mainLight.castShadow = true;
-          scene.add(mainLight);
+          const light = new THREE.DirectionalLight(
+            0xffffff,
+            2.5
+          );
 
-          // ============================================================
-          // MATERIALS
-          // ============================================================
-
-          const cabinetMat = new THREE.MeshStandardMaterial({
-            color: 0x15191d,
-            metalness: .5,
-            roughness: .35
-          });
-
-          const blackMat = new THREE.MeshStandardMaterial({
-            color: 0x030405,
-            metalness: .2,
-            roughness: .5
-          });
-
-          const cyanMat = new THREE.MeshStandardMaterial({
-            color: 0x00aaaa,
-            emissive: 0x003333,
-            metalness: .2,
-            roughness: .3
-          });
-
-          // ============================================================
-          // ARCADE
-          // ============================================================
+          light.position.set(3, 6, 5);
+          scene.add(light);
 
           const arcade = new THREE.Group();
-          arcade.position.set(0, 0, 0);
+          scene.add(arcade);
+
+          const cabinetMaterial =
+            new THREE.MeshStandardMaterial({
+              color: 0x151515,
+              metalness: 0.35,
+              roughness: 0.55
+            });
 
           const cabinet = new THREE.Mesh(
-            new THREE.BoxGeometry(1.8, 3.3, .85),
-            cabinetMat
+            new THREE.BoxGeometry(3.8, 5.8, 1.5),
+            cabinetMaterial
           );
 
-          cabinet.position.y = 1.65;
-          cabinet.castShadow = true;
-          cabinet.receiveShadow = true;
+          cabinet.position.set(0, 2.25, 0);
           arcade.add(cabinet);
 
-          // Screen recess
-
           const screenFrame = new THREE.Mesh(
-            new THREE.BoxGeometry(1.48, 1.78, .12),
-            blackMat
+            new THREE.BoxGeometry(3.15, 3.95, 0.25),
+            new THREE.MeshStandardMaterial({
+              color: 0x252525
+            })
           );
 
-          screenFrame.position.set(0, 2.22, -.47);
+          screenFrame.position.set(0, 3.15, 0.82);
           arcade.add(screenFrame);
 
-          // ============================================================
-          // TETRIS BOARD
-          // ============================================================
+          const screen = new THREE.Mesh(
+            new THREE.PlaneGeometry(2.7, 3.5),
+            new THREE.MeshBasicMaterial({
+              color: 0x06121b
+            })
+          );
+
+          screen.position.set(0, 3.15, 0.96);
+          arcade.add(screen);
+
+          const BOARD_W = 10;
+          const BOARD_H = 20;
+          const CELL = 0.25;
+
+          const board = [];
+
+          for (let y = 0; y < BOARD_H; y++) {
+            board[y] = new Array(BOARD_W).fill(0);
+          }
 
           const boardGroup = new THREE.Group();
 
-          const CELL = .105;
-          const WIDTH = 10;
-          const HEIGHT = 20;
-
           boardGroup.position.set(
             0,
-            2.22,
-            -.545
+            3.15,
+            1.02
           );
 
           arcade.add(boardGroup);
 
-          const cells = [];
-
-          for (let y = 0; y < HEIGHT; y++) {
-            cells[y] = [];
-
-            for (let x = 0; x < WIDTH; x++) {
-
-              const material = new THREE.MeshStandardMaterial({
-                color: 0x081014,
-                emissive: 0x000000
-              });
-
-              const cube = new THREE.Mesh(
-                new THREE.BoxGeometry(
-                  CELL * .9,
-                  CELL * .9,
-                  .045
-                ),
-                material
-              );
-
-              cube.position.set(
-                (x - 4.5) * CELL,
-                (y - 9.5) * CELL,
-                0
-              );
-
-              boardGroup.add(cube);
-              cells[y][x] = cube;
-            }
-          }
-
-          // ============================================================
-          // TETROMINO DATA
-          // ============================================================
-
-          const SHAPES = [
-            {
-              color: 0x00ffff,
-              shape: [
-                [1, 1, 1, 1]
-              ]
-            },
-            {
-              color: 0xffff00,
-              shape: [
-                [1, 1],
-                [1, 1]
-              ]
-            },
-            {
-              color: 0xaa00ff,
-              shape: [
-                [0, 1, 0],
-                [1, 1, 1]
-              ]
-            },
-            {
-              color: 0x00ff55,
-              shape: [
-                [0, 1, 1],
-                [1, 1, 0]
-              ]
-            },
-            {
-              color: 0xff3333,
-              shape: [
-                [1, 1, 0],
-                [0, 1, 1]
-              ]
-            },
-            {
-              color: 0x3366ff,
-              shape: [
-                [1, 0, 0],
-                [1, 1, 1]
-              ]
-            },
-            {
-              color: 0xff8800,
-              shape: [
-                [0, 0, 1],
-                [1, 1, 1]
-              ]
-            }
+          const colors = [
+            0x00ffff,
+            0xffff00,
+            0xaa00ff,
+            0x00ff00,
+            0xff0000,
+            0xff8800,
+            0x0088ff
           ];
 
-          const grid = Array.from(
-            { length: HEIGHT },
-            () => Array(WIDTH).fill(null)
-          );
+          const shapes = [
+            [[1, 1, 1, 1]],
+            [
+              [1, 1],
+              [1, 1]
+            ],
+            [
+              [0, 1, 0],
+              [1, 1, 1]
+            ],
+            [
+              [1, 1, 0],
+              [0, 1, 1]
+            ],
+            [
+              [0, 1, 1],
+              [1, 1, 0]
+            ],
+            [
+              [1, 0, 0],
+              [1, 1, 1]
+            ],
+            [
+              [0, 0, 1],
+              [1, 1, 1]
+            ]
+          ];
 
           let current = null;
-          let fallTimer = 0;
-          let lastTime = performance.now();
-
           let score = 0;
           let lines = 0;
           let level = 1;
           let paused = false;
           let gameOver = false;
+          let fallTimer = 0;
 
-          // ============================================================
-          // PIECE
-          // ============================================================
+          const blockMeshes = [];
 
-          function cloneShape(shape) {
-            return shape.map(row => [...row]);
+          function boardPosition(x, y) {
+            return new THREE.Vector3(
+              (x - 4.5) * CELL,
+              (y - 9.5) * CELL,
+              0
+            );
           }
 
-          function spawnPiece() {
-
-            const data =
-              SHAPES[Math.floor(Math.random() * SHAPES.length)];
-
-            current = {
-              shape: cloneShape(data.shape),
-              color: data.color,
-              x: Math.floor(
-                (WIDTH - data.shape[0].length) / 2
+          function makeBlock(x, y, color) {
+            const mesh = new THREE.Mesh(
+              new THREE.BoxGeometry(
+                CELL * 0.88,
+                CELL * 0.88,
+                CELL * 0.88
               ),
-              y: HEIGHT - data.shape.length
-            };
+              new THREE.MeshStandardMaterial({
+                color,
+                emissive: color,
+                emissiveIntensity: 0.18
+              })
+            );
 
-            if (!valid(current.shape, current.x, current.y)) {
-              gameOver = true;
-              paused = false;
-              updateState();
-            }
+            mesh.position.copy(
+              boardPosition(x, y)
+            );
+
+            boardGroup.add(mesh);
+
+            return mesh;
           }
 
-          function valid(shape, px, py) {
-
-            for (let y = 0; y < shape.length; y++) {
-              for (let x = 0; x < shape[y].length; x++) {
-
-                if (!shape[y][x])
-                  continue;
-
-                const gx = px + x;
-                const gy = py + y;
-
-                if (gx < 0 || gx >= WIDTH || gy < 0)
-                  return false;
-
-                if (grid[gy][gx])
-                  return false;
-              }
+          function redrawBoard() {
+            for (const mesh of blockMeshes) {
+              boardGroup.remove(mesh);
             }
 
-            return true;
-          }
+            blockMeshes.length = 0;
 
-          function move(dx, dy) {
-
-            if (paused || gameOver || !current)
-              return false;
-
-            const nx = current.x + dx;
-            const ny = current.y + dy;
-
-            if (valid(current.shape, nx, ny)) {
-              current.x = nx;
-              current.y = ny;
-              return true;
-            }
-
-            return false;
-          }
-
-          function rotate() {
-
-            if (paused || gameOver || !current)
-              return;
-
-            const old = current.shape;
-
-            const rotated =
-              old[0].map((_, i) =>
-                old.map(row => row[i]).reverse()
-              );
-
-            if (valid(rotated, current.x, current.y)) {
-              current.shape = rotated;
-              return;
-            }
-
-            // Small wall-kick attempt.
-            if (valid(rotated, current.x - 1, current.y)) {
-              current.x--;
-              current.shape = rotated;
-              return;
-            }
-
-            if (valid(rotated, current.x + 1, current.y)) {
-              current.x++;
-              current.shape = rotated;
-            }
-          }
-
-          function lockPiece() {
-
-            for (let y = 0; y < current.shape.length; y++) {
-              for (let x = 0; x < current.shape[y].length; x++) {
-
-                if (current.shape[y][x]) {
-                  grid[current.y + y][current.x + x] =
-                    current.color;
-                }
-              }
-            }
-
-            clearLines();
-            spawnPiece();
-          }
-
-          function hardDrop() {
-
-            if (paused || gameOver)
-              return;
-
-            while (move(0, -1)) {}
-
-            lockPiece();
-            renderBoard();
-          }
-
-          function clearLines() {
-
-            let cleared = 0;
-
-            for (let y = 0; y < HEIGHT; y++) {
-
-              if (grid[y].every(Boolean)) {
-
-                grid.splice(y, 1);
-                grid.push(Array(WIDTH).fill(null));
-
-                cleared++;
-                y--;
-              }
-            }
-
-            if (!cleared)
-              return;
-
-            lines += cleared;
-
-            const points = [
-              0,
-              100,
-              300,
-              500,
-              800
-            ];
-
-            score += points[cleared] * level;
-
-            level =
-              Math.floor(lines / 10) + 1;
-
-            updateHUD();
-          }
-
-          // ============================================================
-          // RENDER TETRIS
-          // ============================================================
-
-          function renderBoard() {
-
-            for (let y = 0; y < HEIGHT; y++) {
-              for (let x = 0; x < WIDTH; x++) {
-
-                const cell = cells[y][x];
-
-                if (grid[y][x]) {
-
-                  cell.material.color.setHex(
-                    grid[y][x]
-                  );
-
-                  cell.material.emissive.setHex(
-                    grid[y][x]
-                  );
-
-                  cell.material.emissiveIntensity = .25;
-
-                } else {
-
-                  cell.material.color.setHex(
-                    0x081014
-                  );
-
-                  cell.material.emissive.setHex(
-                    0x000000
+            for (let y = 0; y < BOARD_H; y++) {
+              for (let x = 0; x < BOARD_W; x++) {
+                if (board[y][x]) {
+                  blockMeshes.push(
+                    makeBlock(
+                      x,
+                      y,
+                      colors[board[y][x] - 1]
+                    )
                   );
                 }
               }
             }
 
             if (current) {
-
-              for (let y = 0; y < current.shape.length; y++) {
-                for (let x = 0; x < current.shape[y].length; x++) {
-
-                  if (!current.shape[y][x])
+              for (
+                let py = 0;
+                py < current.shape.length;
+                py++
+              ) {
+                for (
+                  let px = 0;
+                  px < current.shape[py].length;
+                  px++
+                ) {
+                  if (!current.shape[py][px]) {
                     continue;
-
-                  const gx = current.x + x;
-                  const gy = current.y + y;
-
-                  if (
-                    gx >= 0 &&
-                    gx < WIDTH &&
-                    gy >= 0 &&
-                    gy < HEIGHT
-                  ) {
-
-                    cells[gy][gx].material.color.setHex(
-                      current.color
-                    );
-
-                    cells[gy][gx].material.emissive.setHex(
-                      current.color
-                    );
-
-                    cells[gy][gx].material.emissiveIntensity = .3;
                   }
+
+                  blockMeshes.push(
+                    makeBlock(
+                      current.x + px,
+                      current.y + py,
+                      colors[current.color - 1]
+                    )
+                  );
                 }
               }
             }
           }
 
-          // ============================================================
-          // HUD
-          // ============================================================
+          function collision(piece) {
+            for (
+              let py = 0;
+              py < piece.shape.length;
+              py++
+            ) {
+              for (
+                let px = 0;
+                px < piece.shape[py].length;
+                px++
+              ) {
+                if (!piece.shape[py][px]) {
+                  continue;
+                }
 
-          function updateHUD() {
+                const x = piece.x + px;
+                const y = piece.y + py;
 
-            document.getElementById("score").textContent =
-              score;
+                if (
+                  x < 0 ||
+                  x >= BOARD_W ||
+                  y < 0
+                ) {
+                  return true;
+                }
 
-            document.getElementById("lines").textContent =
-              lines;
+                if (
+                  y < BOARD_H &&
+                  board[y][x]
+                ) {
+                  return true;
+                }
+              }
+            }
 
-            document.getElementById("level").textContent =
-              level;
+            return false;
           }
 
-          function updateState() {
+          function spawn() {
+            const index =
+              Math.floor(
+                Math.random() * shapes.length
+              );
 
-            const state =
-              document.getElementById("state");
+            current = {
+              shape: shapes[index].map(
+                row => [...row]
+              ),
+              color: index + 1,
+              x: 3,
+              y:
+                BOARD_H -
+                shapes[index].length
+            };
 
-            if (gameOver)
-              state.textContent = "GAME OVER — RESTART";
+            if (collision(current)) {
+              gameOver = true;
 
-            else if (paused)
-              state.textContent = "PAUSED";
+              document.getElementById(
+                "state"
+              ).textContent = "GAME OVER";
+            }
+          }
 
-            else
-              state.textContent = "";
+          function merge() {
+            for (
+              let py = 0;
+              py < current.shape.length;
+              py++
+            ) {
+              for (
+                let px = 0;
+                px < current.shape[py].length;
+                px++
+              ) {
+                if (!current.shape[py][px]) {
+                  continue;
+                }
+
+                const x = current.x + px;
+                const y = current.y + py;
+
+                if (
+                  y >= 0 &&
+                  y < BOARD_H
+                ) {
+                  board[y][x] =
+                    current.color;
+                }
+              }
+            }
+          }
+
+          function clearLines() {
+            let cleared = 0;
+
+            for (let y = 0; y < BOARD_H; y++) {
+              if (board[y].every(Boolean)) {
+                board.splice(y, 1);
+                board.push(
+                  new Array(BOARD_W).fill(0)
+                );
+                cleared++;
+                y--;
+              }
+            }
+
+            if (cleared) {
+              const points = [
+                0,
+                100,
+                300,
+                500,
+                800
+              ];
+
+              score +=
+                points[cleared] * level;
+
+              lines += cleared;
+              level =
+                Math.floor(lines / 10) + 1;
+
+              document.getElementById(
+                "score"
+              ).textContent = score;
+
+              document.getElementById(
+                "lines"
+              ).textContent = lines;
+
+              document.getElementById(
+                "level"
+              ).textContent = level;
+            }
+          }
+
+          function move(dx) {
+            if (
+              !current ||
+              paused ||
+              gameOver
+            ) {
+              return;
+            }
+
+            const test = {
+              ...current,
+              x: current.x + dx
+            };
+
+            if (!collision(test)) {
+              current.x += dx;
+              redrawBoard();
+            }
+          }
+
+          function drop() {
+            if (
+              !current ||
+              paused ||
+              gameOver
+            ) {
+              return;
+            }
+
+            const test = {
+              ...current,
+              y: current.y - 1
+            };
+
+            if (!collision(test)) {
+              current.y--;
+            } else {
+              merge();
+              clearLines();
+              spawn();
+            }
+
+            redrawBoard();
+          }
+
+          function rotate() {
+            if (
+              !current ||
+              paused ||
+              gameOver
+            ) {
+              return;
+            }
+
+            const rotated =
+              current.shape[0].map(
+                (_, i) =>
+                  current.shape
+                    .map(row => row[i])
+                    .reverse()
+              );
+
+            const test = {
+              ...current,
+              shape: rotated
+            };
+
+            if (!collision(test)) {
+              current.shape = rotated;
+              redrawBoard();
+            }
           }
 
           function restart() {
-
-            for (let y = 0; y < HEIGHT; y++)
-              grid[y].fill(null);
+            for (let y = 0; y < BOARD_H; y++) {
+              board[y].fill(0);
+            }
 
             score = 0;
             lines = 0;
             level = 1;
-
             paused = false;
             gameOver = false;
 
-            spawnPiece();
-            updateHUD();
-            updateState();
-            renderBoard();
-            startMusic();
-          }
+            document.getElementById(
+              "score"
+            ).textContent = "0";
 
-          function togglePause() {
+            document.getElementById(
+              "lines"
+            ).textContent = "0";
 
-            if (gameOver)
-              return;
+            document.getElementById(
+              "level"
+            ).textContent = "1";
 
-            paused = !paused;
-            updateState();
-          }
+            document.getElementById(
+              "state"
+            ).textContent = "PLAYING";
 
-          // ============================================================
-          // AUDIO
-          // ============================================================
+            spawn();
+            redrawBoard();
 
-          const music =
-            document.getElementById("music");
+            const music =
+              document.getElementById("music");
 
-          music.volume = .55;
-
-          function startMusic() {
-
+            music.currentTime = 0;
             music.play().catch(() => {});
           }
 
-          // ============================================================
-          // ARCADE BUTTONS
-          // ============================================================
+          function togglePause() {
+            if (gameOver) {
+              return;
+            }
 
-          const buttonMeshes = [];
+            paused = !paused;
+
+            document.getElementById(
+              "state"
+            ).textContent =
+              paused
+                ? "PAUSED"
+                : "PLAYING";
+          }
+
+
+          // ------------------------------------------------------------
+          // 3D buttons
+          // ------------------------------------------------------------
+
+          const buttons = [];
+
+          const buttonGeometry =
+            new THREE.BoxGeometry(
+              0.72,
+              0.28,
+              0.22
+            );
 
           function createArcadeButton(
-            name,
             label,
+            action,
             x,
-            y,
-            z
+            y
           ) {
+            const group =
+              new THREE.Group();
 
-            const group = new THREE.Group();
-
-            const base = new THREE.Mesh(
-              new THREE.BoxGeometry(.34, .20, .20),
-              blackMat
+            group.position.set(
+              x,
+              y,
+              1.0
             );
 
-            const button = new THREE.Mesh(
-              new THREE.CylinderGeometry(
-                .075,
-                .075,
-                .07,
-                24
-              ),
-              cyanMat
-            );
+            const mesh =
+              new THREE.Mesh(
+                buttonGeometry,
+                new THREE.MeshStandardMaterial({
+                  color: 0x333333,
+                  roughness: 0.4,
+                  metalness: 0.2
+                })
+              );
 
-            button.rotation.x =
-              Math.PI / 2;
-
-            button.position.z = -.13;
-
-            group.add(base);
-            group.add(button);
-
-            group.position.set(x, y, z);
-
-            group.userData.action = name;
-
-            arcade.add(group);
-            buttonMeshes.push(group);
-
-            // Floating label
+            group.add(mesh);
 
             const canvas =
-              document.createElement("canvas");
+              document.createElement(
+                "canvas"
+              );
 
-            canvas.width = 256;
-            canvas.height = 64;
+            canvas.width = 512;
+            canvas.height = 128;
 
-            const ctx = canvas.getContext("2d");
+            const ctx =
+              canvas.getContext("2d");
 
-            ctx.fillStyle = "#00ffff";
-            ctx.font = "bold 28px monospace";
+            ctx.fillStyle = "#111";
+            ctx.fillRect(
+              0,
+              0,
+              canvas.width,
+              canvas.height
+            );
+
+            ctx.fillStyle = "#fff";
+            ctx.font =
+              "bold 54px Arial";
+
             ctx.textAlign = "center";
-            ctx.fillText(label, 128, 40);
+            ctx.textBaseline = "middle";
+
+            ctx.fillText(
+              label,
+              256,
+              64
+            );
 
             const texture =
-              new THREE.CanvasTexture(canvas);
+              new THREE.CanvasTexture(
+                canvas
+              );
 
-            const labelMesh = new THREE.Mesh(
-              new THREE.PlaneGeometry(.32, .08),
-              new THREE.MeshBasicMaterial({
-                map: texture,
-                transparent: true
-              })
-            );
+            const labelMesh =
+              new THREE.Mesh(
+                new THREE.PlaneGeometry(
+                  0.62,
+                  0.155
+                ),
+                new THREE.MeshBasicMaterial({
+                  map: texture,
+                  transparent: true
+                })
+              );
 
-            labelMesh.position.set(
-              x,
-              y + .17,
-              z - .01
-            );
+            labelMesh.position.z =
+              0.121;
 
-            arcade.add(labelMesh);
+            group.add(labelMesh);
+
+            group.userData.action =
+              action;
+
+            arcade.add(group);
+
+            buttons.push(group);
 
             return group;
           }
 
+
           createArcadeButton(
-            "left", "LEFT",
-            -.63, .75, -.53
+            "LEFT",
+            "left",
+            -1.15,
+            0.15
           );
 
           createArcadeButton(
-            "right", "RIGHT",
-            -.21, .75, -.53
+            "RIGHT",
+            "right",
+            -0.38,
+            0.15
           );
 
           createArcadeButton(
-            "pause", "PAUSE",
-            .21, .75, -.53
+            "PAUSE",
+            "pause",
+            0.39,
+            0.15
           );
 
           createArcadeButton(
-            "restart", "RESTART",
-            .63, .75, -.53
+            "RESTART",
+            "restart",
+            1.16,
+            0.15
           );
 
           createArcadeButton(
-            "rotate", "ROTATE",
-            -.38, .44, -.53
+            "ROTATE",
+            "rotate",
+            -0.55,
+            -0.35
           );
 
           createArcadeButton(
-            "down", "DOWN",
-            .38, .44, -.53
+            "DOWN",
+            "down",
+            0.55,
+            -0.35
           );
 
-          // ============================================================
-          // INTERACTION
-          // ============================================================
 
-          function performAction(action) {
+          function activateButton(button) {
+            const action =
+              button.userData.action;
 
-            startMusic();
+            button.scale.set(
+              0.94,
+              0.82,
+              0.94
+            );
 
-            switch (action) {
+            setTimeout(() => {
+              button.scale.set(
+                1,
+                1,
+                1
+              );
+            }, 100);
 
-              case "left":
-                move(-1, 0);
-                break;
-
-              case "right":
-                move(1, 0);
-                break;
-
-              case "down":
-
-                if (!move(0, -1))
-                  lockPiece();
-
-                break;
-
-              case "rotate":
-                rotate();
-                break;
-
-              case "pause":
-                togglePause();
-                break;
-
-              case "restart":
-                restart();
-                break;
+            if (action === "left") {
+              move(-1);
             }
 
-            renderBoard();
+            if (action === "right") {
+              move(1);
+            }
+
+            if (action === "pause") {
+              togglePause();
+            }
+
+            if (action === "restart") {
+              restart();
+            }
+
+            if (action === "rotate") {
+              rotate();
+            }
+
+            if (action === "down") {
+              drop();
+            }
           }
 
-          // Desktop mouse/touch ray interaction.
+
+          // ------------------------------------------------------------
+          // Mouse / touch raycasting
+          // ------------------------------------------------------------
 
           const raycaster =
             new THREE.Raycaster();
@@ -876,247 +819,235 @@ jobs:
           const pointer =
             new THREE.Vector2();
 
-          function pointerAction(x, y) {
-
+          function updatePointer(event) {
             pointer.x =
-              (x / innerWidth) * 2 - 1;
+              event.clientX /
+              window.innerWidth * 2 - 1;
 
             pointer.y =
-              -(y / innerHeight) * 2 + 1;
-
-            raycaster.setFromCamera(
-              pointer,
-              camera
-            );
-
-            const hits =
-              raycaster.intersectObjects(
-                buttonMeshes,
-                true
-              );
-
-            if (!hits.length)
-              return;
-
-            let object =
-              hits[0].object;
-
-            while (
-              object &&
-              !object.userData.action
-            ) {
-              object = object.parent;
-            }
-
-            if (object)
-              performAction(
-                object.userData.action
-              );
+              -(event.clientY /
+                window.innerHeight) * 2 + 1;
           }
 
           renderer.domElement.addEventListener(
             "pointerdown",
             event => {
-              pointerAction(
-                event.clientX,
-                event.clientY
+              updatePointer(event);
+
+              raycaster.setFromCamera(
+                pointer,
+                camera
               );
+
+              const hits =
+                raycaster.intersectObjects(
+                  buttons,
+                  true
+                );
+
+              if (!hits.length) {
+                return;
+              }
+
+              let target =
+                hits[0].object;
+
+              while (
+                target &&
+                !target.userData.action
+              ) {
+                target = target.parent;
+              }
+
+              if (target) {
+                activateButton(target);
+              }
             }
           );
 
-          // ============================================================
-          // VR CONTROLLERS
-          // ============================================================
 
-          const controllers = [
-            renderer.xr.getController(0),
-            renderer.xr.getController(1)
-          ];
+          // ------------------------------------------------------------
+          // VR controller ray
+          // ------------------------------------------------------------
 
-          controllers.forEach(controller => {
+          const controller =
+            renderer.xr.getController(0);
 
-            scene.add(controller);
+          scene.add(controller);
 
-            const laser = new THREE.Line(
-              new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(0, 0, 0),
-                new THREE.Vector3(0, 0, -3)
-              ]),
+          const controllerRay =
+            new THREE.Line(
+              new THREE.BufferGeometry()
+                .setFromPoints([
+                  new THREE.Vector3(0, 0, 0),
+                  new THREE.Vector3(0, 0, -4)
+                ]),
               new THREE.LineBasicMaterial({
-                color: 0x00ffff
+                color: 0xffffff
               })
             );
 
-            controller.add(laser);
+          controller.add(controllerRay);
 
-            controller.addEventListener(
-              "selectstart",
-              () => {
+          controller.addEventListener(
+            "selectstart",
+            () => {
+              raycaster.ray.origin.setFromMatrixPosition(
+                controller.matrixWorld
+              );
 
-                const origin =
-                  new THREE.Vector3();
+              raycaster.ray.direction.set(
+                0,
+                0,
+                -1
+              ).applyQuaternion(
+                controller.quaternion
+              );
 
-                const direction =
-                  new THREE.Vector3(
-                    0, 0, -1
-                  );
-
-                origin.setFromMatrixPosition(
-                  controller.matrixWorld
+              const hits =
+                raycaster.intersectObjects(
+                  buttons,
+                  true
                 );
 
-                direction.applyQuaternion(
-                  controller.quaternion
-                );
-
-                raycaster.set(
-                  origin,
-                  direction
-                );
-
-                const hits =
-                  raycaster.intersectObjects(
-                    buttonMeshes,
-                    true
-                  );
-
-                if (!hits.length)
-                  return;
-
-                let object =
-                  hits[0].object;
-
-                while (
-                  object &&
-                  !object.userData.action
-                ) {
-                  object = object.parent;
-                }
-
-                if (object) {
-                  performAction(
-                    object.userData.action
-                  );
-                }
+              if (!hits.length) {
+                return;
               }
-            );
-          });
 
-          // ============================================================
-          // VR CROSSHAIR
-          // ============================================================
+              let target =
+                hits[0].object;
 
-          const crosshair =
-            new THREE.Group();
+              while (
+                target &&
+                !target.userData.action
+              ) {
+                target = target.parent;
+              }
 
-          const crossMaterial =
-            new THREE.LineBasicMaterial({
-              color: 0x00ffff
-            });
-
-          function crossLine(a, b) {
-
-            return new THREE.Line(
-              new THREE.BufferGeometry()
-                .setFromPoints([a, b]),
-              crossMaterial
-            );
-          }
-
-          crosshair.add(
-            crossLine(
-              new THREE.Vector3(-.025, 0, 0),
-              new THREE.Vector3(.025, 0, 0)
-            )
-          );
-
-          crosshair.add(
-            crossLine(
-              new THREE.Vector3(0, -.025, 0),
-              new THREE.Vector3(0, .025, 0)
-            )
-          );
-
-          // Crosshair follows the headset direction.
-
-          scene.add(crosshair);
-
-          // ============================================================
-          // KEYBOARD
-          // ============================================================
-
-          addEventListener(
-            "keydown",
-            event => {
-
-              startMusic();
-
-              switch (event.key) {
-
-                case "ArrowLeft":
-                case "a":
-                  performAction("left");
-                  break;
-
-                case "ArrowRight":
-                case "d":
-                  performAction("right");
-                  break;
-
-                case "ArrowDown":
-                case "s":
-                  performAction("down");
-                  break;
-
-                case "ArrowUp":
-                case "w":
-                case "z":
-                  performAction("rotate");
-                  break;
-
-                case "p":
-                case "Escape":
-                  performAction("pause");
-                  break;
-
-                case "r":
-                  performAction("restart");
-                  break;
+              if (target) {
+                activateButton(target);
               }
             }
           );
 
-          // ============================================================
-          // MOBILE BUTTONS
-          // ============================================================
 
-          document
-            .querySelectorAll("#mobileControls button")
-            .forEach(button => {
+          // ------------------------------------------------------------
+          // Keyboard
+          // ------------------------------------------------------------
 
-              button.addEventListener(
-                "pointerdown",
-                event => {
+          window.addEventListener(
+            "keydown",
+            event => {
+              if (
+                event.key === "ArrowLeft" ||
+                event.key.toLowerCase() === "a"
+              ) {
+                move(-1);
+              }
 
-                  event.preventDefault();
+              if (
+                event.key === "ArrowRight" ||
+                event.key.toLowerCase() === "d"
+              ) {
+                move(1);
+              }
 
-                  performAction(
-                    button.dataset.action
-                  );
-                }
+              if (
+                event.key === "ArrowDown" ||
+                event.key.toLowerCase() === "s"
+              ) {
+                drop();
+              }
+
+              if (
+                event.key === "ArrowUp" ||
+                event.key.toLowerCase() === "w" ||
+                event.key.toLowerCase() === "z"
+              ) {
+                rotate();
+              }
+
+              if (
+                event.key.toLowerCase() === "p" ||
+                event.key === "Escape"
+              ) {
+                togglePause();
+              }
+
+              if (
+                event.key.toLowerCase() === "r"
+              ) {
+                restart();
+              }
+            }
+          );
+
+
+          // ------------------------------------------------------------
+          // Crosshair
+          // ------------------------------------------------------------
+
+          const crosshair =
+            new THREE.Mesh(
+              new THREE.RingGeometry(
+                0.012,
+                0.018,
+                32
+              ),
+              new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                side: THREE.DoubleSide
+              })
+            );
+
+          crosshair.position.set(
+            0,
+            0,
+            -1
+          );
+
+          camera.add(crosshair);
+          scene.add(camera);
+
+
+          // ------------------------------------------------------------
+          // Resize
+          // ------------------------------------------------------------
+
+          window.addEventListener(
+            "resize",
+            () => {
+              camera.aspect =
+                window.innerWidth /
+                window.innerHeight;
+
+              camera.updateProjectionMatrix();
+
+              renderer.setSize(
+                window.innerWidth,
+                window.innerHeight
               );
-            });
+            }
+          );
 
-          // ============================================================
-          // GAME LOOP
-          // ============================================================
 
-          function tick(time) {
+          spawn();
+          redrawBoard();
 
-            const dt =
+          document.getElementById(
+            "loading"
+          ).style.display = "none";
+
+
+          let lastTime =
+            performance.now();
+
+
+          function animate(time) {
+            const delta =
               Math.min(
                 (time - lastTime) / 1000,
-                .1
+                0.1
               );
 
             lastTime = time;
@@ -1125,54 +1056,21 @@ jobs:
               !paused &&
               !gameOver
             ) {
+              fallTimer += delta;
 
               const interval =
                 Math.max(
-                  .08,
-                  .8 -
-                  (level - 1) * .07
+                  0.08,
+                  0.8 -
+                  (level - 1) * 0.07
                 );
 
-              fallTimer += dt;
-
-              if (fallTimer >= interval) {
-
+              if (
+                fallTimer >= interval
+              ) {
                 fallTimer = 0;
-
-                if (!move(0, -1))
-                  lockPiece();
-
-                renderBoard();
+                drop();
               }
-            }
-
-            // Headset crosshair.
-
-            if (renderer.xr.isPresenting) {
-
-              const xrCamera =
-                renderer.xr.getCamera(camera);
-
-              const forward =
-                new THREE.Vector3(
-                  0, 0, -1
-                );
-
-              forward.applyQuaternion(
-                xrCamera.quaternion
-              );
-
-              crosshair.position.copy(
-                xrCamera.position
-              );
-
-              crosshair.position.add(
-                forward.multiplyScalar(2)
-              );
-
-              crosshair.quaternion.copy(
-                xrCamera.quaternion
-              );
             }
 
             renderer.render(
@@ -1181,146 +1079,31 @@ jobs:
             );
           }
 
-          renderer.setAnimationLoop(tick);
-
-          // ============================================================
-          // RESIZE
-          // ============================================================
-
-          addEventListener(
-            "resize",
-            () => {
-
-              camera.aspect =
-                innerWidth / innerHeight;
-
-              camera.updateProjectionMatrix();
-
-              renderer.setSize(
-                innerWidth,
-                innerHeight
-              );
-            }
+          renderer.setAnimationLoop(
+            animate
           );
-
-          // ============================================================
-          // START
-          // ============================================================
-
-          spawnPiece();
-          updateHUD();
-          renderBoard();
-
-          setTimeout(() => {
-
-            const loading =
-              document.getElementById("loading");
-
-            loading.style.opacity = "0";
-
-            setTimeout(
-              () => loading.remove(),
-              600
-            );
-
-          }, 700);
           EOF
 
-      - name: Generate original TETRIS.OGG
+      - name: Commit generated website
         run: |
-          python3 - <<'PY'
-          import math
-          import wave
-          import struct
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          rate = 44100
+          git add index.html
+          git add game.js
+          git add style.css
 
-          notes = {
-              "C4": 261.63,
-              "D4": 293.66,
-              "E4": 329.63,
-              "F4": 349.23,
-              "G4": 392.00,
-              "A4": 440.00,
-              "B4": 493.88,
-              "C5": 523.25,
-              "D5": 587.33,
-              "E5": 659.25,
-              "G5": 783.99
-          }
+          if git diff --cached --quiet; then
+            echo "No generated files changed."
+          else
+            git commit -m "Update VR Tetris music"
+            git push
+          fi
 
-          melody = [
-              ("E4", .18), ("G4", .18), ("C5", .30),
-              ("G4", .18), ("E4", .18), ("D4", .30),
-              ("F4", .18), ("A4", .18), ("D5", .30),
-              ("A4", .18), ("F4", .18), ("E4", .30),
-              ("C5", .18), ("B4", .18), ("G4", .30),
-              ("E4", .18), ("G4", .18), ("C5", .42)
-          ]
-
-          seconds = sum(d for _, d in melody)
-          samples = int(seconds * rate)
-
-          data = []
-
-          t = 0
-
-          for note, duration in melody:
-
-              freq = notes[note]
-              count = int(duration * rate)
-
-              for i in range(count):
-
-                  local = i / rate
-
-                  attack = min(1.0, local / .015)
-                  release = min(1.0, (duration - local) / .035)
-                  envelope = attack * release
-
-                  square = 1.0 if math.sin(
-                      2 * math.pi * freq * local
-                  ) >= 0 else -1.0
-
-                  sine = math.sin(
-                      2 * math.pi * freq * local
-                  )
-
-                  sample = (
-                      .12 * square +
-                      .18 * sine
-                  ) * envelope
-
-                  value = int(
-                      max(-1, min(1, sample)) * 32767
-                  )
-
-                  data.append(
-                      struct.pack("<h", value)
-                  )
-
-          with wave.open("/tmp/tetris.wav", "wb") as f:
-              f.setnchannels(1)
-              f.setsampwidth(2)
-              f.setframerate(rate)
-              f.writeframes(b"".join(data))
-          PY
-
-          ffmpeg \
-            -y \
-            -i /tmp/tetris.wav \
-            -c:a libvorbis \
-            -q:a 5 \
-            dist/TETRIS.OGG
-
-      - name: Create GitHub Pages marker
-        run: |
-          touch dist/.nojekyll
-
-      - name: Upload Pages artifact
+      - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: .
 
   deploy:
     needs: build
@@ -1335,6 +1118,6 @@ jobs:
       id-token: write
 
     steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
