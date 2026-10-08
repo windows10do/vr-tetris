@@ -1,0 +1,965 @@
+import * as THREE from
+  "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
+
+import { VRButton } from
+  "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/webxr/VRButton.js";
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050505);
+
+const camera = new THREE.PerspectiveCamera(
+  65,
+  window.innerWidth / window.innerHeight,
+  0.01,
+  100
+);
+
+camera.position.set(0, 2.5, 5.8);
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: true
+});
+
+renderer.setPixelRatio(
+  Math.min(window.devicePixelRatio, 2)
+);
+
+renderer.setSize(
+  window.innerWidth,
+  window.innerHeight
+);
+
+renderer.xr.enabled = true;
+
+document.body.appendChild(renderer.domElement);
+document.body.appendChild(VRButton.createButton(renderer));
+
+scene.add(
+  new THREE.HemisphereLight(
+    0xffffff,
+    0x222222,
+    2
+  )
+);
+
+const light = new THREE.DirectionalLight(
+  0xffffff,
+  2.5
+);
+
+light.position.set(3, 6, 5);
+scene.add(light);
+
+const arcade = new THREE.Group();
+scene.add(arcade);
+
+const cabinetMaterial =
+  new THREE.MeshStandardMaterial({
+    color: 0x151515,
+    metalness: 0.35,
+    roughness: 0.55
+  });
+
+const cabinet = new THREE.Mesh(
+  new THREE.BoxGeometry(3.8, 5.8, 1.5),
+  cabinetMaterial
+);
+
+cabinet.position.set(0, 2.25, 0);
+arcade.add(cabinet);
+
+const screenFrame = new THREE.Mesh(
+  new THREE.BoxGeometry(3.15, 3.95, 0.25),
+  new THREE.MeshStandardMaterial({
+    color: 0x252525
+  })
+);
+
+screenFrame.position.set(0, 3.15, 0.82);
+arcade.add(screenFrame);
+
+const screen = new THREE.Mesh(
+  new THREE.PlaneGeometry(2.7, 3.5),
+  new THREE.MeshBasicMaterial({
+    color: 0x06121b
+  })
+);
+
+screen.position.set(0, 3.15, 0.96);
+arcade.add(screen);
+
+const BOARD_W = 10;
+const BOARD_H = 20;
+const CELL = 0.25;
+
+const board = [];
+
+for (let y = 0; y < BOARD_H; y++) {
+  board[y] = new Array(BOARD_W).fill(0);
+}
+
+const boardGroup = new THREE.Group();
+
+boardGroup.position.set(
+  0,
+  3.15,
+  1.02
+);
+
+arcade.add(boardGroup);
+
+const colors = [
+  0x00ffff,
+  0xffff00,
+  0xaa00ff,
+  0x00ff00,
+  0xff0000,
+  0xff8800,
+  0x0088ff
+];
+
+const shapes = [
+  [[1, 1, 1, 1]],
+  [
+    [1, 1],
+    [1, 1]
+  ],
+  [
+    [0, 1, 0],
+    [1, 1, 1]
+  ],
+  [
+    [1, 1, 0],
+    [0, 1, 1]
+  ],
+  [
+    [0, 1, 1],
+    [1, 1, 0]
+  ],
+  [
+    [1, 0, 0],
+    [1, 1, 1]
+  ],
+  [
+    [0, 0, 1],
+    [1, 1, 1]
+  ]
+];
+
+let current = null;
+let score = 0;
+let lines = 0;
+let level = 1;
+let paused = false;
+let gameOver = false;
+let fallTimer = 0;
+
+const blockMeshes = [];
+
+function boardPosition(x, y) {
+  return new THREE.Vector3(
+    (x - 4.5) * CELL,
+    (y - 9.5) * CELL,
+    0
+  );
+}
+
+function makeBlock(x, y, color) {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(
+      CELL * 0.88,
+      CELL * 0.88,
+      CELL * 0.88
+    ),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.18
+    })
+  );
+
+  mesh.position.copy(
+    boardPosition(x, y)
+  );
+
+  boardGroup.add(mesh);
+
+  return mesh;
+}
+
+function redrawBoard() {
+  for (const mesh of blockMeshes) {
+    boardGroup.remove(mesh);
+  }
+
+  blockMeshes.length = 0;
+
+  for (let y = 0; y < BOARD_H; y++) {
+    for (let x = 0; x < BOARD_W; x++) {
+      if (board[y][x]) {
+        blockMeshes.push(
+          makeBlock(
+            x,
+            y,
+            colors[board[y][x] - 1]
+          )
+        );
+      }
+    }
+  }
+
+  if (current) {
+    for (
+      let py = 0;
+      py < current.shape.length;
+      py++
+    ) {
+      for (
+        let px = 0;
+        px < current.shape[py].length;
+        px++
+      ) {
+        if (!current.shape[py][px]) {
+          continue;
+        }
+
+        blockMeshes.push(
+          makeBlock(
+            current.x + px,
+            current.y + py,
+            colors[current.color - 1]
+          )
+        );
+      }
+    }
+  }
+}
+
+function collision(piece) {
+  for (
+    let py = 0;
+    py < piece.shape.length;
+    py++
+  ) {
+    for (
+      let px = 0;
+      px < piece.shape[py].length;
+      px++
+    ) {
+      if (!piece.shape[py][px]) {
+        continue;
+      }
+
+      const x = piece.x + px;
+      const y = piece.y + py;
+
+      if (
+        x < 0 ||
+        x >= BOARD_W ||
+        y < 0
+      ) {
+        return true;
+      }
+
+      if (
+        y < BOARD_H &&
+        board[y][x]
+      ) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function spawn() {
+  const index =
+    Math.floor(
+      Math.random() * shapes.length
+    );
+
+  current = {
+    shape: shapes[index].map(
+      row => [...row]
+    ),
+    color: index + 1,
+    x: 3,
+    y:
+      BOARD_H -
+      shapes[index].length
+  };
+
+  if (collision(current)) {
+    gameOver = true;
+
+    document.getElementById(
+      "state"
+    ).textContent = "GAME OVER";
+  }
+}
+
+function merge() {
+  for (
+    let py = 0;
+    py < current.shape.length;
+    py++
+  ) {
+    for (
+      let px = 0;
+      px < current.shape[py].length;
+      px++
+    ) {
+      if (!current.shape[py][px]) {
+        continue;
+      }
+
+      const x = current.x + px;
+      const y = current.y + py;
+
+      if (
+        y >= 0 &&
+        y < BOARD_H
+      ) {
+        board[y][x] =
+          current.color;
+      }
+    }
+  }
+}
+
+function clearLines() {
+  let cleared = 0;
+
+  for (let y = 0; y < BOARD_H; y++) {
+    if (board[y].every(Boolean)) {
+      board.splice(y, 1);
+      board.push(
+        new Array(BOARD_W).fill(0)
+      );
+      cleared++;
+      y--;
+    }
+  }
+
+  if (cleared) {
+    const points = [
+      0,
+      100,
+      300,
+      500,
+      800
+    ];
+
+    score +=
+      points[cleared] * level;
+
+    lines += cleared;
+    level =
+      Math.floor(lines / 10) + 1;
+
+    document.getElementById(
+      "score"
+    ).textContent = score;
+
+    document.getElementById(
+      "lines"
+    ).textContent = lines;
+
+    document.getElementById(
+      "level"
+    ).textContent = level;
+  }
+}
+
+function move(dx) {
+  if (
+    !current ||
+    paused ||
+    gameOver
+  ) {
+    return;
+  }
+
+  const test = {
+    ...current,
+    x: current.x + dx
+  };
+
+  if (!collision(test)) {
+    current.x += dx;
+    redrawBoard();
+  }
+}
+
+function drop() {
+  if (
+    !current ||
+    paused ||
+    gameOver
+  ) {
+    return;
+  }
+
+  const test = {
+    ...current,
+    y: current.y - 1
+  };
+
+  if (!collision(test)) {
+    current.y--;
+  } else {
+    merge();
+    clearLines();
+    spawn();
+  }
+
+  redrawBoard();
+}
+
+function rotate() {
+  if (
+    !current ||
+    paused ||
+    gameOver
+  ) {
+    return;
+  }
+
+  const rotated =
+    current.shape[0].map(
+      (_, i) =>
+        current.shape
+          .map(row => row[i])
+          .reverse()
+    );
+
+  const test = {
+    ...current,
+    shape: rotated
+  };
+
+  if (!collision(test)) {
+    current.shape = rotated;
+    redrawBoard();
+  }
+}
+
+function restart() {
+  for (let y = 0; y < BOARD_H; y++) {
+    board[y].fill(0);
+  }
+
+  score = 0;
+  lines = 0;
+  level = 1;
+  paused = false;
+  gameOver = false;
+
+  document.getElementById(
+    "score"
+  ).textContent = "0";
+
+  document.getElementById(
+    "lines"
+  ).textContent = "0";
+
+  document.getElementById(
+    "level"
+  ).textContent = "1";
+
+  document.getElementById(
+    "state"
+  ).textContent = "PLAYING";
+
+  spawn();
+  redrawBoard();
+
+  const music =
+    document.getElementById("music");
+
+  music.currentTime = 0;
+  music.play().catch(() => {});
+}
+
+function togglePause() {
+  if (gameOver) {
+    return;
+  }
+
+  paused = !paused;
+
+  document.getElementById(
+    "state"
+  ).textContent =
+    paused
+      ? "PAUSED"
+      : "PLAYING";
+}
+
+
+// ------------------------------------------------------------
+// 3D buttons
+// ------------------------------------------------------------
+
+const buttons = [];
+
+const buttonGeometry =
+  new THREE.BoxGeometry(
+    0.72,
+    0.28,
+    0.22
+  );
+
+function createArcadeButton(
+  label,
+  action,
+  x,
+  y
+) {
+  const group =
+    new THREE.Group();
+
+  group.position.set(
+    x,
+    y,
+    1.0
+  );
+
+  const mesh =
+    new THREE.Mesh(
+      buttonGeometry,
+      new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.4,
+        metalness: 0.2
+      })
+    );
+
+  group.add(mesh);
+
+  const canvas =
+    document.createElement(
+      "canvas"
+    );
+
+  canvas.width = 512;
+  canvas.height = 128;
+
+  const ctx =
+    canvas.getContext("2d");
+
+  ctx.fillStyle = "#111";
+  ctx.fillRect(
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+  ctx.fillStyle = "#fff";
+  ctx.font =
+    "bold 54px Arial";
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  ctx.fillText(
+    label,
+    256,
+    64
+  );
+
+  const texture =
+    new THREE.CanvasTexture(
+      canvas
+    );
+
+  const labelMesh =
+    new THREE.Mesh(
+      new THREE.PlaneGeometry(
+        0.62,
+        0.155
+      ),
+      new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true
+      })
+    );
+
+  labelMesh.position.z =
+    0.121;
+
+  group.add(labelMesh);
+
+  group.userData.action =
+    action;
+
+  arcade.add(group);
+
+  buttons.push(group);
+
+  return group;
+}
+
+
+createArcadeButton(
+  "LEFT",
+  "left",
+  -1.15,
+  0.15
+);
+
+createArcadeButton(
+  "RIGHT",
+  "right",
+  -0.38,
+  0.15
+);
+
+createArcadeButton(
+  "PAUSE",
+  "pause",
+  0.39,
+  0.15
+);
+
+createArcadeButton(
+  "RESTART",
+  "restart",
+  1.16,
+  0.15
+);
+
+createArcadeButton(
+  "ROTATE",
+  "rotate",
+  -0.55,
+  -0.35
+);
+
+createArcadeButton(
+  "DOWN",
+  "down",
+  0.55,
+  -0.35
+);
+
+
+function activateButton(button) {
+  const action =
+    button.userData.action;
+
+  button.scale.set(
+    0.94,
+    0.82,
+    0.94
+  );
+
+  setTimeout(() => {
+    button.scale.set(
+      1,
+      1,
+      1
+    );
+  }, 100);
+
+  if (action === "left") {
+    move(-1);
+  }
+
+  if (action === "right") {
+    move(1);
+  }
+
+  if (action === "pause") {
+    togglePause();
+  }
+
+  if (action === "restart") {
+    restart();
+  }
+
+  if (action === "rotate") {
+    rotate();
+  }
+
+  if (action === "down") {
+    drop();
+  }
+}
+
+
+// ------------------------------------------------------------
+// Mouse / touch raycasting
+// ------------------------------------------------------------
+
+const raycaster =
+  new THREE.Raycaster();
+
+const pointer =
+  new THREE.Vector2();
+
+function updatePointer(event) {
+  pointer.x =
+    event.clientX /
+    window.innerWidth * 2 - 1;
+
+  pointer.y =
+    -(event.clientY /
+      window.innerHeight) * 2 + 1;
+}
+
+renderer.domElement.addEventListener(
+  "pointerdown",
+  event => {
+    updatePointer(event);
+
+    raycaster.setFromCamera(
+      pointer,
+      camera
+    );
+
+    const hits =
+      raycaster.intersectObjects(
+        buttons,
+        true
+      );
+
+    if (!hits.length) {
+      return;
+    }
+
+    let target =
+      hits[0].object;
+
+    while (
+      target &&
+      !target.userData.action
+    ) {
+      target = target.parent;
+    }
+
+    if (target) {
+      activateButton(target);
+    }
+  }
+);
+
+
+// ------------------------------------------------------------
+// VR controller ray
+// ------------------------------------------------------------
+
+const controller =
+  renderer.xr.getController(0);
+
+scene.add(controller);
+
+const controllerRay =
+  new THREE.Line(
+    new THREE.BufferGeometry()
+      .setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, -4)
+      ]),
+    new THREE.LineBasicMaterial({
+      color: 0xffffff
+    })
+  );
+
+controller.add(controllerRay);
+
+controller.addEventListener(
+  "selectstart",
+  () => {
+    raycaster.ray.origin.setFromMatrixPosition(
+      controller.matrixWorld
+    );
+
+    raycaster.ray.direction.set(
+      0,
+      0,
+      -1
+    ).applyQuaternion(
+      controller.quaternion
+    );
+
+    const hits =
+      raycaster.intersectObjects(
+        buttons,
+        true
+      );
+
+    if (!hits.length) {
+      return;
+    }
+
+    let target =
+      hits[0].object;
+
+    while (
+      target &&
+      !target.userData.action
+    ) {
+      target = target.parent;
+    }
+
+    if (target) {
+      activateButton(target);
+    }
+  }
+);
+
+
+// ------------------------------------------------------------
+// Keyboard
+// ------------------------------------------------------------
+
+window.addEventListener(
+  "keydown",
+  event => {
+    if (
+      event.key === "ArrowLeft" ||
+      event.key.toLowerCase() === "a"
+    ) {
+      move(-1);
+    }
+
+    if (
+      event.key === "ArrowRight" ||
+      event.key.toLowerCase() === "d"
+    ) {
+      move(1);
+    }
+
+    if (
+      event.key === "ArrowDown" ||
+      event.key.toLowerCase() === "s"
+    ) {
+      drop();
+    }
+
+    if (
+      event.key === "ArrowUp" ||
+      event.key.toLowerCase() === "w" ||
+      event.key.toLowerCase() === "z"
+    ) {
+      rotate();
+    }
+
+    if (
+      event.key.toLowerCase() === "p" ||
+      event.key === "Escape"
+    ) {
+      togglePause();
+    }
+
+    if (
+      event.key.toLowerCase() === "r"
+    ) {
+      restart();
+    }
+  }
+);
+
+
+// ------------------------------------------------------------
+// Crosshair
+// ------------------------------------------------------------
+
+const crosshair =
+  new THREE.Mesh(
+    new THREE.RingGeometry(
+      0.012,
+      0.018,
+      32
+    ),
+    new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      side: THREE.DoubleSide
+    })
+  );
+
+crosshair.position.set(
+  0,
+  0,
+  -1
+);
+
+camera.add(crosshair);
+scene.add(camera);
+
+
+// ------------------------------------------------------------
+// Resize
+// ------------------------------------------------------------
+
+window.addEventListener(
+  "resize",
+  () => {
+    camera.aspect =
+      window.innerWidth /
+      window.innerHeight;
+
+    camera.updateProjectionMatrix();
+
+    renderer.setSize(
+      window.innerWidth,
+      window.innerHeight
+    );
+  }
+);
+
+
+spawn();
+redrawBoard();
+
+document.getElementById(
+  "loading"
+).style.display = "none";
+
+
+let lastTime =
+  performance.now();
+
+
+function animate(time) {
+  const delta =
+    Math.min(
+      (time - lastTime) / 1000,
+      0.1
+    );
+
+  lastTime = time;
+
+  if (
+    !paused &&
+    !gameOver
+  ) {
+    fallTimer += delta;
+
+    const interval =
+      Math.max(
+        0.08,
+        0.8 -
+        (level - 1) * 0.07
+      );
+
+    if (
+      fallTimer >= interval
+    ) {
+      fallTimer = 0;
+      drop();
+    }
+  }
+
+  renderer.render(
+    scene,
+    camera
+  );
+}
+
+renderer.setAnimationLoop(
+  animate
+);

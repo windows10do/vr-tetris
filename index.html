@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+  <title>VR Tetris Arcade</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="loading">LOADING VR TETRIS...</div>
+
+  <div id="hud">
+    <div>SCORE: <span id="score">0</span></div>
+    <div>LINES: <span id="lines">0</span></div>
+    <div>LEVEL: <span id="level">1</span></div>
+    <div>STATE: <span id="state">READY</span></div>
+  </div>
+
+  <audio
+    id="music"
+    src="TETRIS%20-%202026-10-08T191026.861.MP3"
+    loop
+    preload="auto">
+  </audio>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>
